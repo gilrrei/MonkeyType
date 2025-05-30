@@ -22,7 +22,10 @@ from typing import (
     Set,
     Tuple,
     Union,
+    get_origin,
+    get_args,
 )
+from types import UnionType
 
 from monkeytype.compat import (
     cached_property,
@@ -122,7 +125,8 @@ def get_imports_for_annotation(anno: Any) -> ImportMap:
     if is_any(anno):
         imports["typing"].add("Any")
     elif _is_optional(anno):
-        imports["typing"].add("Optional")
+        # nope
+        # imports["typing"].add("Optional")
         elem_type = _get_optional_elem(anno)
         elem_imports = get_imports_for_annotation(elem_type)
         imports.merge(elem_imports)
@@ -149,7 +153,9 @@ def get_imports_for_signature(sig: inspect.Signature) -> ImportMap:
     for param in sig.parameters.values():
         param_imports = get_imports_for_annotation(param.annotation)
         if not _is_optional(param.annotation) and param.default is None:
-            imports["typing"].add("Optional")
+            # do not import
+            # imports["typing"].add("Optional")
+            pass
         imports.merge(param_imports)
     return_imports = get_imports_for_annotation(sig.return_annotation)
     imports.merge(return_imports)
@@ -363,10 +369,16 @@ class RenderAnnotation(GenericTypeRewriter[str]):
         return f"{container_type}[{elements}]"
 
     def rewrite_Union(self, union: type) -> str:
+
+        args = get_args(union)
+
+        union_new = args[0]
+        for t in args[1:]:
+            union_new = union_new | t
+
         if _is_optional(union):
-            elem_type = _get_optional_elem(union)
-            return "Optional[" + self.rewrite(elem_type) + "]"
-        return self._rewrite_container(Union, union)
+            union_new = union_new | None
+        return self._rewrite_container(UnionType, union_new)
 
     def rewrite(self, typ: type) -> str:
         rendered = super().rewrite(typ)
@@ -759,6 +771,7 @@ class FunctionDefinition:
             rewritten_type, stubs = ReplaceTypedDictsWithStubs.rewrite_and_get_stubs(
                 typ, class_name_hint=name
             )
+
             new_arg_types[name] = rewritten_type
             typed_dict_class_stubs.extend(stubs)
 
