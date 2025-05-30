@@ -9,6 +9,13 @@ MonkeyType collects runtime types of function arguments and return values, and
 can automatically generate stub files or even add draft type annotations
 directly to your Python code based on the types collected at runtime.
 
+Main Changes
+============
+
+- Use build in types instead of typing opensource
+- Do not use Optional or Union
+- Update google docstring for the parameters
+
 Example
 -------
 
