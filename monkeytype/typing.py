@@ -402,7 +402,11 @@ class RemoveEmptyContainers(TypeRewriter):
     def rewrite_Union(self, union):
         elems = tuple(self.rewrite(e) for e in union.__args__ if not self._is_empty(e))
         if elems:
-            return Union[elems]
+            args = get_args(union)
+            union_new = args[0]
+            for t in args[1:]:
+                union_new = union_new | t
+            return union_new
         return union
 
 
