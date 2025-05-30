@@ -221,8 +221,75 @@ def apply_stub_handler(
         == ExistingAnnotationStrategy.IGNORE,
         confine_new_imports_in_type_checking_block=args.pep_563,
     )
+    if args.update_docstring:
+        source_with_types = replace_docstrings(source_with_types)
     source_path.write_text(source_with_types)
     print(source_with_types, file=stdout)
+
+
+def replace_docstrings(source_code):
+    import ast
+    import re
+
+    def extract_docstrings(source):
+
+        class DocstringExtractor(ast.NodeVisitor):
+            def __init__(self):
+                self.docstrings = []
+
+            def visit_FunctionDef(self, node):
+                # Extract the docstring of the function
+                docstring = ast.get_docstring(node)
+                if docstring:
+                    self.docstrings.append((node.name, docstring))
+                self.generic_visit(node)
+
+            def visit_ClassDef(self, node):
+                # Extract the docstring of the class
+                docstring = ast.get_docstring(node)
+                if docstring:
+                    self.docstrings.append((node.name, docstring))
+                self.generic_visit(node)
+
+        # Parse the source code into an AST
+        tree = ast.parse(source)
+
+        # Create a DocstringExtractor instance
+        extractor = DocstringExtractor()
+
+        # Visit all nodes in the AST to extract docstrings
+        extractor.visit(tree)
+
+        return extractor.docstrings
+
+    def remove_type(docstring_line):
+        pattern = r" \(.*?\):"
+        result = re.sub(pattern, ":", docstring_line)
+        return result
+
+    docstrings = extract_docstrings(source_code)
+
+    # Print the extracted docstrings
+    for name, docstring in docstrings:
+        if "Returns:" in docstring:
+            for line in docstring.split("Returns:")[1].split("\n"):
+                if ":" in line:
+                    source_code = source_code.replace(line, "   " + line.split(":")[-1])
+        elif "Yields:" in docstring:
+            for line in docstring.split("Yields:")[1].split("\n"):
+                if ":" in line:
+                    source_code = source_code.replace(line, "   " + line.split(":")[-1])
+        if "Args:" in docstring:
+            print(f"Removing docstring type in {name}")
+            if "Returns" in docstring:
+                docstring = docstring.split("Returns:")[0]
+            elif "Yields" in docstring:
+                docstring = docstring.split("Yields:")[0]
+            docstring_args_og = docstring.split("Args:")[-1]
+            for line in docstring_args_og.split("\n"):
+                source_code = source_code.replace(line, remove_type(line))
+
+    return source_code
 
 
 def get_diff(
@@ -444,6 +511,12 @@ qualname format.""",
     )
     list_modules_parser.set_defaults(handler=list_modules_handler)
 
+    parser.add_argument(
+        "--update-docstring",
+        action="store_true",
+        default=False,
+        help="Remove type from docstring",
+    )
     args = parser.parse_args(argv)
     args.config = get_monkeytype_config(args.config)
     update_args_from_config(args)
