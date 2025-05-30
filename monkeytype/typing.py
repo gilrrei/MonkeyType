@@ -11,7 +11,6 @@ from collections import defaultdict
 from itertools import chain
 from typing import (
     Any,
-    Callable,
     DefaultDict,
     Dict,
     Generator,
@@ -19,13 +18,13 @@ from typing import (
     Iterable,
     Iterator,
     List,
-    Set,
     Tuple,
-    Type,
     TypeVar,
     Union,
+    get_args,
 )
-
+from types import UnionType
+from collections.abc import Callable
 from mypy_extensions import TypedDict
 
 from monkeytype.compat import (
@@ -119,7 +118,7 @@ def shrink_typed_dict_types(typed_dicts: List[type], max_typed_dict_size: int) -
             ),
             max_typed_dict_size,
         )
-        return Dict[str, value_type]
+        return dict[str, value_type]
     required_fields = {
         key: shrink_types(list(value_types), max_typed_dict_size)
         for key, value_types in required_fields.items()
@@ -210,7 +209,7 @@ def get_dict_type(dct, max_typed_dict_size):
 def get_type(obj, max_typed_dict_size):
     """Return the static type that would be used in a type hint"""
     if isinstance(obj, type):
-        return Type[obj]
+        return type[obj]
     elif isinstance(obj, _BUILTIN_CALLABLE_TYPES):
         return Callable
     elif isinstance(obj, types.GeneratorType):
@@ -220,12 +219,12 @@ def get_type(obj, max_typed_dict_size):
         elem_type = shrink_types(
             (get_type(e, max_typed_dict_size) for e in obj), max_typed_dict_size
         )
-        return List[elem_type]
+        return list[elem_type]
     elif typ is set:
         elem_type = shrink_types(
             (get_type(e, max_typed_dict_size) for e in obj), max_typed_dict_size
         )
-        return Set[elem_type]
+        return set[elem_type]
     elif typ is dict:
         return get_dict_type(obj, max_typed_dict_size)
     elif typ is defaultdict:
@@ -238,7 +237,7 @@ def get_type(obj, max_typed_dict_size):
         )
         return DefaultDict[key_type, val_type]
     elif typ is tuple:
-        return Tuple[tuple(get_type(e, max_typed_dict_size) for e in obj)]
+        return tuple[tuple(get_type(e, max_typed_dict_size) for e in obj)]
     return typ
 
 
@@ -290,16 +289,16 @@ class GenericTypeRewriter(Generic[T], ABC):
         return self.make_container_type(self.rewrite_container_type(cls), elems)
 
     def rewrite_Dict(self, dct):
-        return self._rewrite_container(Dict, dct)
+        return self._rewrite_container(dict, dct)
 
     def rewrite_List(self, lst):
-        return self._rewrite_container(List, lst)
+        return self._rewrite_container(list, lst)
 
     def rewrite_Set(self, st):
-        return self._rewrite_container(Set, st)
+        return self._rewrite_container(set, st)
 
     def rewrite_Tuple(self, tup):
-        return self._rewrite_container(Tuple, tup)
+        return self._rewrite_container(tuple, tup)
 
     def rewrite_Generator(self, generator):
         return self._rewrite_container(Generator, generator)
@@ -329,7 +328,11 @@ class GenericTypeRewriter(Generic[T], ABC):
         )
 
     def rewrite_Union(self, union):
-        return self._rewrite_container(Union, union)
+        args = get_args(union)
+        union_new = args[0]
+        for t in args[1:]:
+            union_new = union_new | t
+        return self._rewrite_container(UnionType, union_new)
 
     def rewrite(self, typ):
         if is_any(typ):
